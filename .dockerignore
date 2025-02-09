@@ -1,0 +1,8 @@
+**/__pycache__/
+**/*.md
+.git/
+.gitignore
+Dockerfile
+.sql
+.env
+.venv
