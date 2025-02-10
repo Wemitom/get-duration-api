@@ -16,7 +16,7 @@ engine = create_async_engine(DATABASE_URL)
 class DurationCache(Base):
     __tablename__ = "duration_cache"
 
-    url = Column(String, primary_key=True)
+    url = Column(String, primary_key=True, index=True)
     duration = Column(Float)
     created_at = Column(type_=TIMESTAMP(timezone=True), default=datetime.now(tz=timezone.utc))
 
