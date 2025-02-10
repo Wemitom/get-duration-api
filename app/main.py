@@ -11,6 +11,7 @@ import logging
 
 app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
+ffprobe_semaphore = asyncio.BoundedSemaphore(5);
 
 async def get_cached_durations(session: AsyncSession, urls: list[str]):
     result = await session.execute(
@@ -27,29 +28,30 @@ async def get_media_duration(content: bytes):
             tmp_filename = temp.name
 
         cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", tmp_filename]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        async with ffprobe_semaphore:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        except asyncio.TimeoutError:
-            logger.error("ffprobe timed out")
-            await proc.kill()
-            raise RuntimeError("ffprobe timed out")
-    
-
-        if proc.returncode != 0:
-            logger.error(f"ffprobe failed with return code {proc.returncode}: {stderr.decode()}")
-            raise RuntimeError(f"ffprobe failed with return code {proc.returncode}: {stderr.decode()}")
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            except asyncio.TimeoutError:
+                logger.error("ffprobe timed out")
+                await proc.kill()
+                raise RuntimeError("ffprobe timed out")
         
-        try:
-            return float(stdout.decode().strip())
-        except ValueError:
-            logger.error(f"ffprobe failed to parse duration: {stdout.decode()}")
-            raise RuntimeError(f"ffprobe failed to parse duration: {stdout.decode()}")
+
+            if proc.returncode != 0:
+                logger.error(f"ffprobe failed with return code {proc.returncode}: {stderr.decode()}")
+                raise RuntimeError(f"ffprobe failed with return code {proc.returncode}: {stderr.decode()}")
+            
+            try:
+                return float(stdout.decode().strip())
+            except ValueError:
+                logger.error(f"ffprobe failed to parse duration: {stdout.decode()}")
+                raise RuntimeError(f"ffprobe failed to parse duration: {stdout.decode()}")
     finally:
             os.unlink(tmp_filename)
 
